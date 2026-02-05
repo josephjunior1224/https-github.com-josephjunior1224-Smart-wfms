@@ -43,7 +43,7 @@ if (!USE_FIREBASE) {
 } else {
   // Initialize Firebase
   try {
-    firebase = require('../firebase-config');
+    firebase = require('./firebase-config');
     if (firebase.isInitialized) {
       console.log('✓ Firebase initialized successfully');
       console.log(`✓ Project ID: ${process.env.FIREBASE_PROJECT_ID}`);

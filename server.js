@@ -1,5 +1,8 @@
-// WFMS Server – Express + MySQL2/Promise + Connection Pool
+// ===============================================
+// WFMS Server – Express + MySQL2/Promise + Firebase
+// ===============================================
 require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -7,8 +10,12 @@ const QR = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
-const pool = require('./models/db');
 
+// Import database module (handles both MySQL and Firebase)
+const dbModule = require('./db');
+const { pool, firebase, useFirebase } = dbModule;
+
+// Initialize Express app
 const app = express();
 const port = process.env.PORT || 8000;
 const root = process.cwd();
@@ -20,12 +27,56 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure data dir and token file
+// --- Public config endpoint for client Firebase initialization ---
+app.get('/config', (req, res) => {
+  const cfg = {
+    apiKey: process.env.FIREBASE_API_KEY || '',
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || (process.env.FIREBASE_PROJECT_ID ? `${process.env.FIREBASE_PROJECT_ID}.firebaseapp.com` : ''),
+    projectId: process.env.FIREBASE_PROJECT_ID || '',
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || (process.env.FIREBASE_PROJECT_ID ? `${process.env.FIREBASE_PROJECT_ID}.appspot.com` : ''),
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+    appId: process.env.FIREBASE_APP_ID || ''
+  };
+  res.json(cfg);
+});
+
+// --- Firebase token verification middleware for protected routes ---
+async function verifyFirebaseToken(req, res, next) {
+  const authHeader = req.headers.authorization || req.headers.Authorization || '';
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+  const idToken = authHeader.split(' ')[1];
+  try {
+    if (!firebase || !firebase.auth) return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    const decoded = await firebase.auth().verifyIdToken(idToken);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    console.error('✗ Token verification failed:', err);
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// Example protected route
+app.get('/api/protected', verifyFirebaseToken, (req, res) => {
+  res.json({ ok: true, user: req.user });
+});
+
+// Ensure data dir and token file exist
 try { if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR); } catch(e){}
 try { if (!fs.existsSync(TOKENS_FILE)) fs.writeFileSync(TOKENS_FILE, JSON.stringify({}), 'utf8'); } catch(e){}
 
-// Initialize database schema
+// ===============================================
+// Database Initialization (MySQL Only)
+// ===============================================
+
 async function initializeDatabase() {
+  if (useFirebase) {
+    console.log('✓ Using Firebase - skipping MySQL schema initialization');
+    return;
+  }
+
   try {
     const conn = await pool.getConnection();
     
@@ -100,7 +151,7 @@ async function initializeDatabase() {
       await conn.query(stmt);
     }
 
-    console.log('Database schema initialized');
+    console.log('✓ Database schema initialized');
 
     // Seed admin if missing
     const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@wfms.local';
@@ -115,23 +166,23 @@ async function initializeDatabase() {
       const [adminResult] = await conn.query('SELECT id FROM users WHERE email = ?', [adminEmail]);
       const adminId = adminResult[0].id;
       
-      // Insert sample task (only title, description, assigned_to, status)
+      // Insert sample task
       await conn.query('INSERT INTO tasks (title, description, assigned_to, status) VALUES (?, ?, ?, ?)',
         ['Welcome Task', 'This is a seeded welcome task.', adminId, 'pending']);
       
-      console.log('Seeded admin user and sample task');
+      console.log('✓ Seeded admin user and sample task');
     }
 
     conn.release();
   } catch (err) {
-    console.error('Database initialization error:', err.message);
+    console.error('✗ Database initialization error:', err.message);
     throw err;
   }
 }
 
-// ------------------
-// QR API routes (file-backed tokens)
-// ------------------
+// ===============================================
+// QR API Routes (File-backed Tokens)
+// ===============================================
 
 app.post('/api/generate-qr', async (req, res) => {
   try {
@@ -167,13 +218,17 @@ app.post('/api/validate-token', (req, res) => {
   }
 });
 
-// ------------------
-// MySQL API routes (async/await + pool)
-// ------------------
+// ===============================================
+// MySQL API Routes (for MySQL backend)
+// ===============================================
 
 // Signup
 app.post('/api/signup', async (req, res) => {
   try {
+    if (useFirebase) {
+      return res.status(400).json({ error: 'Use Firebase Authentication instead' });
+    }
+
     const { name, email, password, role } = req.body;
     if (!password) return res.status(400).json({ error: 'password required' });
     
@@ -193,6 +248,10 @@ app.post('/api/signup', async (req, res) => {
 // Login
 app.post('/api/login', async (req, res) => {
   try {
+    if (useFirebase) {
+      return res.status(400).json({ error: 'Use Firebase Authentication instead' });
+    }
+
     const { email, password } = req.body;
     const [rows] = await pool.query(
       'SELECT id, name, email, password, role FROM users WHERE email = ?',
@@ -217,9 +276,53 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// --- Admin seeding endpoint (create admin user & assign custom claim) ---
+// Use only in development or protect with SEED_ADMIN_SECRET in production
+app.post('/admin/seed-admin', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    const provided = req.body.seedSecret || req.headers['x-seed-secret'];
+    if (!process.env.SEED_ADMIN_SECRET || provided !== process.env.SEED_ADMIN_SECRET) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+
+  try {
+    if (!firebase || !firebase.auth) return res.status(500).json({ error: 'Firebase Admin not initialized' });
+
+    const email = req.body.email || process.env.SEED_ADMIN_EMAIL;
+    const password = req.body.password || process.env.SEED_ADMIN_PASS;
+
+    let userRecord = null;
+    try { userRecord = await firebase.auth().getUserByEmail(email); } catch(e) { userRecord = null; }
+
+    let uid;
+    if (userRecord) {
+      uid = userRecord.uid;
+    } else {
+      const created = await firebase.auth().createUser({ email, password });
+      uid = created.uid;
+    }
+
+    await firebase.auth().setCustomUserClaims(uid, { role: 'admin' });
+    res.json({ ok: true, uid });
+  } catch (err) {
+    console.error('✗ Seed admin failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
+    if (useFirebase) {
+      const snapshot = await firebase.db.collection('users').get();
+      const users = [];
+      snapshot.forEach(doc => {
+        users.push({ id: doc.id, ...doc.data() });
+      });
+      return res.json(users);
+    }
+
     const [rows] = await pool.query('SELECT id, name, role FROM users');
     res.json(rows);
   } catch (err) {
@@ -232,6 +335,18 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/tasks', async (req, res) => {
   try {
     const { title, description, assigned_to } = req.body;
+
+    if (useFirebase) {
+      const docRef = await firebase.db.collection('tasks').add({
+        title,
+        description,
+        assigned_to,
+        status: 'pending',
+        created_at: new Date()
+      });
+      return res.json({ ok: true, taskId: docRef.id });
+    }
+
     const [result] = await pool.query(
       'INSERT INTO tasks (title, description, assigned_to, status) VALUES (?, ?, ?, ?)',
       [title, description, assigned_to, 'pending']
@@ -247,6 +362,15 @@ app.post('/api/tasks', async (req, res) => {
 // Get all tasks
 app.get('/api/tasks', async (req, res) => {
   try {
+    if (useFirebase) {
+      const snapshot = await firebase.db.collection('tasks').get();
+      const tasks = [];
+      snapshot.forEach(doc => {
+        tasks.push({ id: doc.id, ...doc.data() });
+      });
+      return res.json(tasks);
+    }
+
     const [rows] = await pool.query('SELECT * FROM tasks');
     res.json(rows);
   } catch (err) {
@@ -260,6 +384,11 @@ app.put('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+
+    if (useFirebase) {
+      await firebase.db.collection('tasks').doc(id).update({ status });
+      return res.json({ ok: true });
+    }
     
     await pool.query('UPDATE tasks SET status = ? WHERE id = ?', [status, id]);
     res.json({ ok: true });
@@ -275,6 +404,15 @@ app.post('/api/attendance', async (req, res) => {
     const { user_id, action } = req.body;
     if (!user_id || !action) {
       return res.status(400).json({ error: 'user_id and action required' });
+    }
+
+    if (useFirebase) {
+      const docRef = await firebase.db.collection('attendance').add({
+        user_id,
+        action,
+        timestamp: new Date()
+      });
+      return res.json({ ok: true, id: docRef.id });
     }
     
     const [result] = await pool.query(
@@ -293,6 +431,19 @@ app.post('/api/attendance', async (req, res) => {
 app.get('/api/attendance/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
+
+    if (useFirebase) {
+      const snapshot = await firebase.db.collection('attendance')
+        .where('user_id', '==', parseInt(user_id))
+        .orderBy('timestamp', 'desc')
+        .get();
+      const records = [];
+      snapshot.forEach(doc => {
+        records.push({ id: doc.id, ...doc.data() });
+      });
+      return res.json(records);
+    }
+    
     const [rows] = await pool.query(
       'SELECT * FROM attendance WHERE user_id = ? ORDER BY timestamp DESC',
       [user_id]
@@ -309,6 +460,17 @@ app.get('/api/attendance/:user_id', async (req, res) => {
 app.post('/api/time', async (req, res) => {
   try {
     const { user_id, action, time } = req.body;
+
+    if (useFirebase) {
+      const docRef = await firebase.db.collection('time_logs').add({
+        user_id,
+        action,
+        time: time ? new Date(time) : new Date(),
+        created_at: new Date()
+      });
+      return res.json({ ok: true, id: docRef.id });
+    }
+    
     const [result] = await pool.query(
       'INSERT INTO time_logs (user_id, action, time) VALUES (?, ?, ?)',
       [user_id, action, time || new Date()]
@@ -325,6 +487,19 @@ app.post('/api/time', async (req, res) => {
 app.get('/api/time/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
+
+    if (useFirebase) {
+      const snapshot = await firebase.db.collection('time_logs')
+        .where('user_id', '==', parseInt(user_id))
+        .orderBy('time', 'desc')
+        .get();
+      const records = [];
+      snapshot.forEach(doc => {
+        records.push({ id: doc.id, ...doc.data() });
+      });
+      return res.json(records);
+    }
+    
     const [rows] = await pool.query(
       'SELECT * FROM time_logs WHERE user_id = ? ORDER BY time DESC',
       [user_id]
@@ -337,23 +512,32 @@ app.get('/api/time/:user_id', async (req, res) => {
   }
 });
 
+// ===============================================
+// Static Files & Fallback
+// ===============================================
 
 app.use(express.static(root));
 app.get('*', (req, res) => res.sendFile(path.join(root, 'index.html')));
 
-// ------------------
-// Start server after DB is ready
-// ------------------
+// ===============================================
+// Start Server
+// ===============================================
 
 async function startServer() {
   try {
-    await initializeDatabase();
+    // Initialize MySQL schema only if using MySQL
+    if (!useFirebase) {
+      await initializeDatabase();
+    }
     
     app.listen(port, () => {
-      console.log(`Server running at http://localhost:${port}/`);
+      console.log(`\n========================================`);
+      console.log(`✓ Server running at http://localhost:${port}/`);
+      console.log(`✓ Database: ${useFirebase ? 'Firebase' : 'MySQL'}`);
+      console.log(`========================================\n`);
     });
   } catch (err) {
-    console.error('Failed to start server:', err.message);
+    console.error('✗ Failed to start server:', err.message);
     process.exit(1);
   }
 }

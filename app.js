@@ -22,6 +22,8 @@ async function api(url, method = 'GET', body) {
   return res.json();
 }
 
+
+
 /* ========= THEME ========= */
 function toggleTheme() {
   document.body.classList.toggle('light-theme');
@@ -479,3 +481,158 @@ function showFormSuccess(inputElement) {
   const user = load(CURRENT_KEY);
   if (user) enterDashboard(user);
 })();
+      // User is signed out.
+      console.log("User is signed out.");
+      // Here you would typically:
+      // 1. Show login/registration forms
+      // 2. Hide user-specific content
+      // 3. Clear any user data from the UI
+      // 4. Redirect to a public page (e.g., login screen)
+
+      // Example: Clear welcome message
+      // document.getElementById('welcomeMessage').innerText = 'Please sign in.';
+    }
+  });
+}
+
+// Don't forget to call this function when your app initializes!
+// For example, at the end of your your-app-script.js file
+// setupAuthObserver();
+// your-app-script.js
+
+// Firebase client initialization: fetch web config from server and initialize
+let auth, db;
+async function initFirebaseClient() {
+  try {
+    const resp = await fetch('/config');
+    const cfg = await resp.json();
+    if (!cfg || !cfg.projectId) {
+      console.warn('Firebase web config missing or incomplete; client auth will be disabled');
+      return;
+    }
+    firebase.initializeApp(cfg);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    window.auth = auth;
+    window.db = db;
+    console.log('✓ Firebase client initialized');
+    if (typeof setupAuthObserver === 'function') setupAuthObserver();
+  } catch (err) {
+    console.error('Firebase client initialization error:', err);
+  }
+}
+initFirebaseClient();
+
+// --- Helper functions to update UI messages ---
+function showMessage(elementId, message, type) {
+    const el = document.getElementById(elementId);
+    el.innerText = message;
+    el.className = `message ${type}`;
+    setTimeout(() => { el.innerText = ''; el.className = 'message'; }, 5000); // Clear after 5s
+}
+
+// --- Firebase Authentication Functions (from previous steps) ---
+// registerUser
+async function registerUser(email, password) {
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        console.log("User registered:", userCredential.user.email);
+        showMessage('auth-message', 'Registration successful! Please login.', 'success');
+        // Clear form fields
+        document.getElementById('email').value = '';
+        document.getElementById('password').value = '';
+    } catch (error) {
+        console.error("Error during registration:", error.code, error.message);
+        showMessage('auth-message', `Registration failed: ${error.message}`, 'error');
+    }
+}
+
+// loginUser
+async function loginUser(email, password) {
+    try {
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        console.log("User logged in:", userCredential.user.email);
+        showMessage('auth-message', 'Login successful!', 'success');
+        // UI will be updated by onAuthStateChanged observer
+    } catch (error) {
+        console.error("Error during login:", error.code, error.message);
+        showMessage('auth-message', `Login failed: ${error.message}`, 'error');
+    }
+}
+
+// logoutUser (new function for UI)
+async function logoutUser() {
+    try {
+        await auth.signOut();
+        console.log("User signed out.");
+        showMessage('auth-message', 'You have been logged out.', 'success');
+        // UI will be updated by onAuthStateChanged observer
+    } catch (error) {
+        console.error("Error during logout:", error);
+        showMessage('auth-message', `Logout failed: ${error.message}`, 'error');
+    }
+}
+
+
+// --- Firebase Firestore Functions (from previous steps) ---
+// getUserProfile
+async function getUserProfile() {
+    const user = auth.currentUser;
+    if (user) {
+        try {
+            const docRef = db.collection("users").doc(user.uid);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                console.log("User profile data:", docSnap.data());
+                return docSnap.data();
+            } else {
+                console.log("No such document for user:", user.uid);
+                return null;
+            }
+        } catch (error) {
+            console.error("Error getting user profile document:", error);
+            throw error;
+        }
+    }
+    return null;
+}
+
+// saveUserProfile
+async function saveUserProfile(displayName, department) {
+    // Profile management function - integrate with backend as needed
+    const user = load(CURRENT_KEY);
+    if (user) {
+        console.log('Profile update would be sent to backend:', { displayName, department });
+        logUI('Profile updated');
+    } else {
+        console.warn("No user is currently logged in to save profile.");
+    }
+}
+
+
+// UI Update Logic (connected to auth state)
+function updateProfileUI() {
+    const user = load(CURRENT_KEY);
+    if (user) {
+        // Update profile UI with logged-in user data
+        console.log('User profile loaded:', user);
+    }
+}
+
+// Update App UI based on authentication state
+function updateAppUI(user) {
+    if (user) {
+        console.log('User authenticated:', user.username);
+    }
+}
+
+// Auth State Observer
+function setupAuthObserver() {
+    const user = load(CURRENT_KEY);
+    if (user) {
+        updateAppUI(user);
+    }
+}
+
+// Initialize auth on page load
+setupAuthObserver();
