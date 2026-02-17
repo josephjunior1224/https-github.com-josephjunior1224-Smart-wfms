@@ -1,3 +1,4 @@
+
 # Workforce Management System (WFMS)
 
 A professional web-based workforce management system built with Node.js, Express, and MySQL.
@@ -156,3 +157,7 @@ For bugs or feature requests, please update relevant files and test thoroughly.
 ## License
 
 Proprietary - All rights reserved
+
+Hey everyone, the project is about a smart workforce management system using QR-based scanning technology to monitor and track employee time accuracy and productivity in an organization 
+  it mainly focuse on work assigned and their completion with a valuable report based on the task assigned to the individual, it's lightwaight easy to use and also very interesting in terms of design and flexibility.
+
