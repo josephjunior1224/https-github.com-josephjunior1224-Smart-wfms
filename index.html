@@ -12,8 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
 
   <!-- DHTMLX Suite (optional) -->
-  <link rel="stylesheet" href="https://cdn.dhtmlx.com/suite/v7/suite.min.css" />
-  <script src="https://cdn.dhtmlx.com/suite/v7/suite.min.js"></script>
+  <!-- DHTMLX Suite (optional) - removed CDN includes to avoid 404 errors; add back if you host the library locally -->
 
   <!-- jsPDF -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -55,19 +54,16 @@
         </div>
 
         <div class="form-group form-group-animate" style="animation-delay: 0.1s">
-          <label class="form-label label-animate">Username</label>
-          <input type="text" id="username" class="form-control input-animate" placeholder="Enter your username" autocomplete="username" />
+          <label class="form-label label-animate">Email</label>
+          <input type="email" id="username" class="form-control input-animate" placeholder="Enter your email" autocomplete="email" />
         </div>
 
-        <div class="form-group form-group-animate" style="animation-delay: 0.2s">
-          <label for="role" class="form-label label-animate">Role</label>
-          <select id="role" class="form-control input-animate">
-            <option value="employee">Employee</option>
-            <option value="admin">Admin</option>
-          </select>
+        <div class="form-group form-group-animate" style="animation-delay: 0.15s">
+          <label class="form-label label-animate">Password</label>
+          <input type="password" id="password" class="form-control input-animate" placeholder="Enter your password" autocomplete="current-password" />
         </div>
 
-        <button class="btn btn-primary w-100 btn-lg btn-animate" style="animation-delay: 0.3s" onclick="login()">
+        <button class="btn btn-primary w-100 btn-lg btn-animate" style="animation-delay: 0.25s" onclick="login()">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
             <polyline points="10 17 15 12 10 7" />
@@ -76,7 +72,25 @@
           Sign In
         </button>
 
-        <div class="button-group-inline" style="animation-delay: 0.4s">
+        <div style="position: relative; margin: 1.5rem 0; animation-delay: 0.27s" class="form-animate">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <hr style="flex: 1; border: none; border-top: 1px solid var(--text-secondary);" />
+            <span style="color: var(--text-secondary); font-size: 0.875rem;">Or continue with</span>
+            <hr style="flex: 1; border: none; border-top: 1px solid var(--text-secondary);" />
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-outline-secondary w-100 btn-animate" style="animation-delay: 0.28s" onclick="loginWithGoogle()">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Sign in with Google
+        </button>
+
+        <div class="button-group-inline" style="animation-delay: 0.3s">
           <button class="btn btn-outline-secondary w-100 btn-animate" onclick="startScan()">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 7h10v10H7z" />
@@ -85,7 +99,7 @@
           </button>
         </div>
 
-        <p class="auth-link text-center link-animate" style="animation-delay: 0.5s" onclick="showRegister()">
+        <p class="auth-link text-center link-animate" style="animation-delay: 0.4s" onclick="showRegister()">
           Don't have an account? <span class="link-text">Create one</span>
         </p>
       </div>
@@ -102,11 +116,26 @@
         </div>
 
         <div class="form-group form-group-animate" style="animation-delay: 0.1s">
-          <label class="form-label label-animate">Username</label>
-          <input type="text" id="regUsername" class="form-control input-animate" placeholder="Choose a username" autocomplete="username" />
+          <label class="form-label label-animate">Full Name</label>
+          <input type="text" id="regUsername" class="form-control input-animate" placeholder="Enter your full name" autocomplete="name" />
+        </div>
+
+        <div class="form-group form-group-animate" style="animation-delay: 0.15s">
+          <label class="form-label label-animate">Email</label>
+          <input type="email" id="regEmail" class="form-control input-animate" placeholder="Enter your email" autocomplete="email" />
         </div>
 
         <div class="form-group form-group-animate" style="animation-delay: 0.2s">
+          <label class="form-label label-animate">Password</label>
+          <div class="input-group">
+            <input type="password" id="regPassword" class="form-control input-animate" placeholder="Enter a strong password (min 6 chars)" autocomplete="new-password" />
+            <button id="regPasswordToggle" class="btn btn-outline-secondary" type="button" aria-label="Show password" title="Show password" onclick="toggleRegPassword()">
+              <i id="regPasswordIcon" class="bi bi-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group form-group-animate" style="animation-delay: 0.25s">
           <label for="regRole" class="form-label label-animate">Role</label>
           <select id="regRole" class="form-control input-animate">
             <option value="employee">Employee</option>
@@ -121,19 +150,9 @@
           Create Account
         </button>
 
-        <button class="btn btn-info w-100 mt-2 btn-animate" style="animation-delay: 0.4s" onclick="generateQrForRegister()">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-            <rect x="3" y="14" width="4" height="4" />
-          </svg>
-          Generate QR Code
-        </button>
-
         <div id="generatedQr" class="qr-generated-container"></div>
 
-        <p class="auth-link text-center link-animate" style="animation-delay: 0.5s" onclick="backToLogin()">
+        <p class="auth-link text-center link-animate" style="animation-delay: 0.4s" onclick="backToLogin()">
           Already have an account? <span class="link-text">Sign in</span>
         </p>
       </div>
@@ -341,11 +360,7 @@
             </svg>
             <h5 class="mb-0">Performance Overview</h5>
           </div>
-          <div id="performanceChart" class="admin-chart">
-            <div class="chart-info">
-              📊 Performance metrics will appear here
-            </div>
-          </div>
+          <canvas id="performanceChart" class="admin-chart" style="max-height: 400px;"></canvas>
         </div>
 
         <!-- Download Report -->
@@ -448,6 +463,8 @@
   <div id="notificationsPanel" class="notifications-panel hidden" aria-live="polite"></div>
 
   <!-- ===== SCRIPTS ===== -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>

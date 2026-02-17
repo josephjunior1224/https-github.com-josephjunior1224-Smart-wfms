@@ -1,62 +1,55 @@
-const mysql = require('mysql2/promise');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 require('dotenv').config();
 
-// Determine database type from environment
-const USE_FIREBASE = process.env.DATABASE_TYPE === 'firebase';
+// Use SQLite for local development
+const dbPath = path.join(__dirname, 'wfms.db');
 
-let pool = null;
-let firebase = null;
-
-// Initialize MySQL if not using Firebase
-if (!USE_FIREBASE) {
-  pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASS || '',
-    database: process.env.DB_NAME || 'wfms',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    enableKeepAlive: true,
-    keepAliveInitialDelayMs: 0,
-    multipleStatements: true // Allow multiple SQL statements
-  });
-
-  // Test connection on startup
-  pool.getConnection()
-    .then(conn => {
-      console.log('✓ MySQL Database pool connected successfully');
-      console.log(`✓ Host: ${process.env.DB_HOST || 'localhost'}`);
-      console.log(`✓ Database: ${process.env.DB_NAME || 'wfms'}`);
-      conn.release();
-    })
-    .catch(err => {
-      console.error('✗ MySQL connection failed:', err.message);
-      console.error('Please ensure MySQL is running and .env is configured correctly');
-    });
-
-  // Handle pool errors
-  pool.on('error', (err) => {
-    console.error('✗ Unexpected error on idle client:', err);
-    process.exit(-1);
-  });
-} else {
-  // Initialize Firebase
-  try {
-    firebase = require('./firebase-config');
-    if (firebase.isInitialized) {
-      console.log('✓ Firebase initialized successfully');
-      console.log(`✓ Project ID: ${process.env.FIREBASE_PROJECT_ID}`);
-    } else {
-      console.error('✗ Firebase initialization failed');
-    }
-  } catch (err) {
-    console.error('✗ Firebase initialization error:', err.message);
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('❌ SQLite connection error:', err.message);
+  } else {
+    console.log('✓ Connected to SQLite database at', dbPath);
   }
-}
+});
+
+// Enable foreign keys
+db.run('PRAGMA foreign_keys = ON', (err) => {
+  if (err) console.error('Could not enable foreign keys:', err);
+});
+
+// Promisify database operations
+const dbAll = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows || []);
+    });
+  });
+};
+
+const dbRun = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve({ id: this.lastID, changes: this.changes });
+    });
+  });
+};
+
+const dbGet = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+};
 
 module.exports = {
-  pool: pool,
-  firebase: firebase,
-  useFirebase: USE_FIREBASE
+  db: db,
+  dbAll: dbAll,
+  dbRun: dbRun,
+  dbGet: dbGet,
+  useFirebase: process.env.DATABASE_TYPE === 'firebase'
 };
